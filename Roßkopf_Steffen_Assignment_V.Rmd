@@ -1,0 +1,181 @@
+---
+title: "Assignment V"
+author: "Roßkopf Steffen"
+date: "`r Sys.Date()`"
+output:
+  prettydoc::html_pretty:
+    theme: architect
+    highlight: github
+vignette: >
+  %\VignetteIndexEntry{Vignette Title}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+```{r setup, message=FALSE, include=FALSE}
+
+rm(list = ls())
+
+if(!require("httr")) install.packages("httr")
+if(!require("tidyverse")) install.packages("tidyverse")
+if(!require("jsonlite")) install.packages("jsonlite")
+
+library(httr)
+library(tidyverse)
+library(jsonlite)
+
+```
+
+
+# 1. Setting up a new GitHub repository
+• Register on github.com in case you have not done this already.
+
+• Initialize a new public repository for this assignment on GitHub.
+
+• For the following exercises of this assignment, follow the standard Git workflow (i.e., pull the latest
+version of the project to your local computer, then stage, commit, and push all the modifications that
+you make throughout the project). Every logical programming step should be well documented on
+GitHub with a meaningful commit message, so that other people (e.g., your course instructor) can
+follow understand the development history. You can to do this either using Shell commands or a Git
+GUI of your choice.
+
+• In the HTML file that you submit, include the hyperlink to the project repository
+
+-> [here](https://github.com/rosskost/assignment_V) is the link to my repository
+
+# 2. Getting to know the API
+• Visit the documentation website for the API provided by ticketmaster.com (see [here](https://developer.ticketmaster.com/products-and-docs/apis/getting-started/)).
+
+• Familiarize yourself with the features and functionalities of the Ticketmaster Discovery API. Have a
+particular look at rate limits.
+
+• Whithin the scope of this assignment, you do not have to request your own API key. Instead retrieve
+a valid key from the API Explorer. This API key enables you to perform the GET requests needed
+throughout this assignment.
+
+• Even though this API key is not secret per se (it is publicly visible onn the API Explorer website),
+please comply to the common secrecy practices discussed in the lecture and the tutorial: Treat the API
+key as a secret token. Your API key should neither appear in the code that you are submitting nor in
+your public GitHub repository.
+
+```{r}
+source("./key.R")
+# users of this file, get your own api-key at:
+# https://developer.ticketmaster.com/api-explorer/v2/
+  
+```
+
+# 3. Interacting with the API - the basics
+• Load the packages needed to interact with APIs using R.
+
+• Perform a first GET request, that searches for event venues in Germany (countryCode = "DE"). Extract
+the content from the response object and inspect the resulting list. Describe what you can see.
+
+```{r}
+
+response_events_ger <- GET(url = "https://app.ticketmaster.com/discovery/v2/events/",
+                           query = list(apikey = api_key,
+                                        countryCode = "DE"))
+
+status_code(response_events_ger)  # succesful
+    
+content_events_ger <- fromJSON(content(response_events_ger, as = "text"))
+
+
+```
+
+
+• Extract the name, the city, the postalCode and address, as well as the url and the longitude and
+latitude of the venues to a data frame. This data frame should have the following structure:
+glimpse(venue_data)
+
+```{r}
+
+df_content_events_ger <- as.data.frame(content_events_ger)
+
+# content_events_ger %>%
+  # dplyr::select(contains(name, city, postalCode, address, url, longitude, latitude))
+```
+
+
+```{r}
+
+embedded <- content_events_ger[["_embedded"]]
+```
+
+
+# 4. Interacting with the API - advanced
+• Have a closer look at the list element named page. Did your GET request from exercise 3 return all
+event locations in Germany? Obviously not - there are of course much more venues in Germany than
+those contained in this list. Your GET request only yielded the first results page containing the first 20
+out of several thousands of venues.
+
+• Check the API documentation under the section Venue Search. How can you request the venues from
+the remaining results pages?
+
+• Write a for loop that iterates through the results pages and performs a GET request for all venues
+in Germany. After each iteration, extract the seven variables name, city, postalCode, address, url,
+longitude, and latitude. Join the information in one large data frame.
+
+• The resulting data frame should look something like this (note that the exact number of search results
+may have changed since this document has been last modified):
+```{r}
+# 5 rquests per second -> R.sys.sleep 0.2
+
+```
+ 
+# 5. Visualizing the extracted data
+• Below, you can find code that produces a map of Germany. Add points to the map indicating the
+locations of the event venues across Germany.
+
+• You will find that some coordinates lie way beyond the German borders and can be assumed to be faulty.
+Set coordinate values to NA where the value of longitude is outside the range (5.866944, 15.043611)
+or where the value of latitude is outside the range (47.271679, 55.0846) (these coordinate ranges
+have been derived from the extreme points of Germany as listed on Wikipedia (see here). For extreme
+points of other countries, see here).
+
+```{r}
+ggplot() +
+geom_polygon(
+aes(x = long, y = lat, group = group), data = map_data("world", region = "Germany"),
+fill = "grey90",color = "black") +
+theme_void() + coord_quickmap() +
+labs(title = "Event locations across Germany", caption = "Source: ticketmaster.com") +
+theme(title = element_text(size=8, face='bold'),
+plot.caption = element_text(face = "italic"))
+
+```
+
+
+
+# 6. Event locations in other countries
+
+• Repeat exercises 2 to 5 for another European country of your choice. (Hint: Clean code pays off! If you
+have coded the exercises efficiently, only very few adaptions need to be made.)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r fig.width=6, fig.height=6, fig.align='center', include=FALSE}
+
+
+```
+
+```{r, echo=FALSE, results='asis', include=FALSE}
+
+knitr::kable(head(iris, 10))
+```
+
+
+
