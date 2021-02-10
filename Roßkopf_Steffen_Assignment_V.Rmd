@@ -18,10 +18,12 @@ rm(list = ls())
 if(!require("httr")) install.packages("httr")
 if(!require("tidyverse")) install.packages("tidyverse")
 if(!require("jsonlite")) install.packages("jsonlite")
+if(!require("rlist")) install.packages("rlist")
 
 library(httr)
 library(tidyverse)
 library(jsonlite)
+library(rlist)
 
 ```
 
@@ -72,13 +74,19 @@ the content from the response object and inspect the resulting list. Describe wh
 
 ```{r}
 
-response_events_ger <- GET(url = "https://app.ticketmaster.com/discovery/v2/events/",
+response_events_ger <- GET(url = "https://app.ticketmaster.com/discovery/v2/venues",
                            query = list(apikey = api_key,
-                                        countryCode = "DE"))
+                                        countryCode = 'DE',
+                                        locale = '*'))
 
 status_code(response_events_ger)  # succesful
     
-content_events_ger <- fromJSON(content(response_events_ger, as = "text"))
+content_events_ger <- fromJSON(content(response_events_ger, as = "text")) # put json-content in R list
+
+# the response list 'content_events_ger' consists of three main-lists. '_embedded', '_links' and 'page'.
+# in _embedded.venues we find the relevant data we are looking for. Some of them are again a list. We recieved 20 observations.
+# in _links we can find information on our search, on page information on which page we are and how many
+# more observations we can get.
 
 
 ```
@@ -89,17 +97,16 @@ latitude of the venues to a data frame. This data frame should have the followin
 glimpse(venue_data)
 
 ```{r}
+df_venues <- as.data.frame(list.flatten(content_events_ger)) %>% 
+  select(contains(
+    c('venues.name','city.name','postalCode','address','venues.url','longitude','latitude'))) %>%              set_colnames(c('name','city','postal_code','address','url','longitude','latitude')) %>% 
+  mutate("longitude" = as.numeric(longitude),
+         "latitude" = as.numeric(latitude))
 
-df_content_events_ger <- as.data.frame(content_events_ger)
+glimpse(df_venues)
 
-# content_events_ger %>%
-  # dplyr::select(contains(name, city, postalCode, address, url, longitude, latitude))
-```
+str(df_venues)
 
-
-```{r}
-
-embedded <- content_events_ger[["_embedded"]]
 ```
 
 
@@ -112,15 +119,56 @@ out of several thousands of venues.
 • Check the API documentation under the section Venue Search. How can you request the venues from
 the remaining results pages?
 
+```{r}
+# there is a page-argument, which we can hand over
+```
+
+
 • Write a for loop that iterates through the results pages and performs a GET request for all venues
 in Germany. After each iteration, extract the seven variables name, city, postalCode, address, url,
 longitude, and latitude. Join the information in one large data frame.
+```{r}
+
+get_venues_of_country_ticketmaster <- function (country_code = "DE", api_key) {
+  
+  number_pages <- as.data.frame(list.flatten(content_events_ger_II)) %>% 
+      select(contains('totalPages')) %>% 
+      slice(1)  # get number of pages to loop over
+  
+  df_venues_country = data.frame() # empty df we store data in
+  for (i in 1:as.integer(number_pages)) {
+
+    response <- GET(url = "https://app.ticketmaster.com/discovery/v2/venues",
+                           query = list(apikey = api_key,
+                                        countryCode = country_code,
+                                        locale = '*',
+                                        page = as.character(i)))
+    
+    content_parsed <- fromJSON(content(response, as = "text"))
+    
+    df_content_i <- as.data.frame(list.flatten(content_parsed)) %>% 
+      select(contains(
+        c('venues.name','city.name','postalCode','address','venues.url','longitude','latitude')))
+    
+      df_venues_country = rbind(df_venues_country, df_content_i)
+  }
+  return(df_venues_country)
+}
+
+```
+
+
+```{r}
+df_venues = get_venues_of_country_ticketmaster("DE", api_key)
+
+
+
+```
+ 
 
 • The resulting data frame should look something like this (note that the exact number of search results
 may have changed since this document has been last modified):
 ```{r}
-# 5 rquests per second -> R.sys.sleep 0.2
-
 ```
  
 # 5. Visualizing the extracted data
