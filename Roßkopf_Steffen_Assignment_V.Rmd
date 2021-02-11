@@ -19,12 +19,15 @@ if(!require("httr")) install.packages("httr")
 if(!require("tidyverse")) install.packages("tidyverse")
 if(!require("jsonlite")) install.packages("jsonlite")
 if(!require("rlist")) install.packages("rlist")
+if(!require("magrittr")) install.packages("magrittr")
+if(!require("janitor")) install.packages("janitor")
 
 library(httr)
 library(tidyverse)
 library(jsonlite)
 library(rlist)
-
+library(magrittr)
+library(janitor)
 ```
 
 
@@ -77,11 +80,14 @@ the content from the response object and inspect the resulting list. Describe wh
 response_events_ger <- GET(url = "https://app.ticketmaster.com/discovery/v2/venues",
                            query = list(apikey = api_key,
                                         countryCode = 'DE',
-                                        locale = '*'))
+                                        locale = '*',
+                                        page = 0))
 
 status_code(response_events_ger)  # succesful
     
 content_events_ger <- fromJSON(content(response_events_ger, as = "text")) # put json-content in R list
+
+
 
 # the response list 'content_events_ger' consists of three main-lists. '_embedded', '_links' and 'page'.
 # in _embedded.venues we find the relevant data we are looking for. Some of them are again a list. We recieved 20 observations.
@@ -104,8 +110,6 @@ df_venues <- as.data.frame(list.flatten(content_events_ger)) %>%
          "latitude" = as.numeric(latitude))
 
 glimpse(df_venues)
-
-str(df_venues)
 
 ```
 
@@ -131,27 +135,66 @@ longitude, and latitude. Join the information in one large data frame.
 
 get_venues_of_country_ticketmaster <- function (country_code = "DE", api_key) {
   
-  number_pages <- as.data.frame(list.flatten(content_events_ger_II)) %>% 
-      select(contains('totalPages')) %>% 
-      slice(1)  # get number of pages to loop over
+  # idea: we make one get-request to get the number of elements and pages were looking for,
+  # after that we use a loop to get all elements.
   
-  df_venues_country = data.frame() # empty df we store data in
-  for (i in 1:as.integer(number_pages)) {
-
-    response <- GET(url = "https://app.ticketmaster.com/discovery/v2/venues",
+  initial_response <- GET(url = "https://app.ticketmaster.com/discovery/v2/venues",
                            query = list(apikey = api_key,
                                         countryCode = country_code,
                                         locale = '*',
-                                        page = as.character(i)))
-    
-    content_parsed <- fromJSON(content(response, as = "text"))
-    
-    df_content_i <- as.data.frame(list.flatten(content_parsed)) %>% 
-      select(contains(
-        c('venues.name','city.name','postalCode','address','venues.url','longitude','latitude')))
-    
-      df_venues_country = rbind(df_venues_country, df_content_i)
+                                        page = 0))
+  initial_content_parsed <- fromJSON(content(initial_response, as = "text", encoding = "UTF-8"))
+  
+  dimensions_search <- unlist(initial_content_parsed[["page"]]) # get dimensions of our search
+  
+  size_page <- dimensions_search[1]
+  n <- dimensions_search[2]   # number of observations/row in whole response
+  number_pages <- dimensions_search[3]
+  
+  # df we store data in:
+  df_venues_country <- data.frame(  
+    name = character(n),
+    city = character(n),
+    postal_code = character(n),
+    adress = character(n),
+    url = character(n),
+    longitude = integer(n),
+    latitude = integer(n),
+    stringsAsFactors = FALSE
+  )
+
+  Sys.sleep(0.2)
+  
+  for (page in 0:18) {
+    if (page == number_pages) {  # if we are on the last page, size ==?
+         response <- GET(url = "https://app.ticketmaster.com/discovery/v2/venues",
+                           query = list(apikey = api_key,
+                                        countryCode = country_code,
+                                        locale = '*',
+                                        page = as.character(page),
+                                        size = n %% size_page)) # at last page only receive last few rows
+         
+         content_parsed <- fromJSON(
+           content(response, as = "text", encoding = "UTF-8"), flatten = TRUE)[["_embedded"]][["venues"]]
+         
+         df_venues_country[(page * size_page - n %% size_page):(n), ] <- content_parsed %>%
+           select(name, city.name, postalCode, address.line1, url, location.longitude, location.latitude)
+      
+    } else {
+       response <- GET(url = "https://app.ticketmaster.com/discovery/v2/venues",
+                           query = list(apikey = api_key,
+                                        countryCode = country_code,
+                                        locale = '*',
+                                        page = as.character(page)))
+       content_parsed <- fromJSON(
+         content(response, as = "text", encoding = "UTF-8"), flatten = TRUE)[["_embedded"]][["venues"]]
+       df_venues_country[(page * size_page + 1):((page+1)* size_page), ] <- content_parsed %>%
+         select(name, city.name, postalCode, address.line1, url, location.longitude, location.latitude)
+       
+       Sys.sleep(0.2) # documentation api,  at max 5 request per second.
+    }
   }
+  
   return(df_venues_country)
 }
 
@@ -159,9 +202,7 @@ get_venues_of_country_ticketmaster <- function (country_code = "DE", api_key) {
 
 
 ```{r}
-df_venues = get_venues_of_country_ticketmaster("DE", api_key)
-
-
+df_venues_full = get_venues_of_country_ticketmaster(country_code = "AT", api_key)
 
 ```
  
@@ -169,6 +210,49 @@ df_venues = get_venues_of_country_ticketmaster("DE", api_key)
 • The resulting data frame should look something like this (note that the exact number of search results
 may have changed since this document has been last modified):
 ```{r}
+
+response_de <- GET(url = "https://app.ticketmaster.com/discovery/v2/venues",
+                           query = list(apikey = api_key,
+                                        countryCode = "DE",
+                                        locale = '*',
+                                        page = 0))
+
+status_code(response_de)
+  
+
+content_parsed_de <- fromJSON(content(response_de, as = "text", encoding = "UTF-8"))
+
+dimensions_search <- unlist(content_parsed_de[["page"]])
+dimensions_search
+    
+content_parsed_at[["_embedded"]][["venues"]][["name"]]
+
+n <- 12238
+
+  df_venues_country <- data.frame(  
+    name = character(n),
+    city = character(n),
+    postal_code = character(n),
+    adress = character(n),
+    url = character(n),
+    longitude = integer(n),
+    latitude = integer(n),
+    stringsAsFactors = FALSE
+  )
+
+
+  response <- GET(url = "https://app.ticketmaster.com/discovery/v2/venues",
+                           query = list(apikey = api_key,
+                                        countryCode = 'DE',
+                                        locale = '*',
+                                        size = n))
+       content_parsed <- fromJSON(
+         content(response, as = "text", encoding = "UTF-8"), flatten = TRUE)[["_embedded"]][["venues"]]
+       
+       df_venues_country[1:n, ] <- content_parsed %>%
+         select(name, city.name, postalCode, address.line1, url, location.longitude, location.latitude)
+
+
 ```
  
 # 5. Visualizing the extracted data
