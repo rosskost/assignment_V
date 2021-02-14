@@ -76,20 +76,19 @@ the content from the response object and inspect the resulting list. Describe wh
 response_venues_de <- GET(url = "https://app.ticketmaster.com/discovery/v2/venues",
                            query = list(apikey = api_key,
                                         countryCode = 'DE',
-                                        locale = '*',
-                                        page = 0))
+                                        locale = '*'))
 
-status_code(response_venues_de)  # succesful
+status_code(response_venues_de)  # status code = 200 -> succesful
 ```
 ```{r}
-#  make a in R list out of json-content:
+#  json-content into R:
 content_venues_de <- fromJSON(content(response_venues_de, as = "text")) 
 
-# the response list 'content_events_ger' consists of three main-lists. '_embedded', '_links'
+# the response list 'content_venues_de' consists of three main-lists. '_embedded', '_links'
 # and 'page'. In _embedded.venues we find the relevant data we are looking for. Some of them 
 # are again a list. We recieved 20 observations.
-# in _links we can find information on our search, on page information we can find on which
-# page we are on and how many more observations there is for our current request.
+# in '_links' we can find information on our search, on 'page' we can find information on which
+# page we are on and how many more observations there are for our current request.
 ```
 
 • Extract the name, the city, the postalCode and address, as well as the url and the longitude and
@@ -128,10 +127,10 @@ longitude, and latitude. Join the information in one large data frame.
 ```{r}
 # doing that inside a function:
 
-get_venues_of_country_ticketmaster <- function (country_code = "DE", api_key) {
-  # idea: we make one initial get-request to get the number of elements and pages were looking for,
-  # after that we use a loop to get all elements. This way this function is flexible for all page
-  # sizes and number of observations 
+get_venues_of_country_ticketmaster <- function (country_code, api_key) {
+  # idea: we make one initial get-request to get the number of elements and pages were looking
+  # for, after that we use a loop to get all elements. This way this function is flexible for
+  # all page sizes and number of observations 
 
   
   initial_response <- GET(url = "https://app.ticketmaster.com/discovery/v2/venues",
@@ -139,13 +138,14 @@ get_venues_of_country_ticketmaster <- function (country_code = "DE", api_key) {
                                         countryCode = country_code,
                                         locale = '*',
                                         page = 0))
-  initial_content_parsed <- fromJSON(content(initial_response, as = "text", encoding = "UTF-8"))
   
-  dimensions_search <- unlist(initial_content_parsed[["page"]]) # here we find the
+  initial_content <- fromJSON(content(initial_response, as = "text", encoding = "UTF-8"))
+  
+  dimensions_search <- unlist(initial_content[["page"]]) # here we find the
   # 'dimensions' of the request, we will do.
   
   size_page <- dimensions_search[1]
-  n <- dimensions_search[2]   # number of observations/rows in whole request
+  n <- dimensions_search[2] # number of observations/rows in whole request
   number_pages <- dimensions_search[3]
   
   # setting up df, in which we store data in:
@@ -165,7 +165,10 @@ get_venues_of_country_ticketmaster <- function (country_code = "DE", api_key) {
   # starting loop:
   for (page in 0:(number_pages-1)) { # pages zero indexed, so end at number_pages -1
     
+    Sys.sleep(0.2) # after each page 0.2 seconds sleep, since only 5 requests per sec allowed
+    
     if (page == (number_pages-1)) {  # if we are on the last page:
+      
          response <- GET(url = "https://app.ticketmaster.com/discovery/v2/venues",
                            query = list(apikey = api_key,
                                         countryCode = country_code,
@@ -216,7 +219,7 @@ get_venues_of_country_ticketmaster <- function (country_code = "DE", api_key) {
            df_venues_country[(page * size_page + 1):((page+1)* size_page), i ] <- NA 
          }
        } 
-    }
+    } 
   }
   # at the end return the final df
   return(df_venues_country %>% 
@@ -227,9 +230,10 @@ get_venues_of_country_ticketmaster <- function (country_code = "DE", api_key) {
 
 
 ```{r functioncall_de}
+# nowmcalling this function to get the df for germany
 
 df_venues_de_full = get_venues_of_country_ticketmaster(country_code = "DE", api_key)
-# takes around 55 seconds, which is appropiate.
+# takes around 3 1/2 min, which is appropiate respecting  the api providers limitations.
 
 ```
  
@@ -237,7 +241,7 @@ df_venues_de_full = get_venues_of_country_ticketmaster(country_code = "DE", api_
 may have changed since this document has been last modified):
 ```{r}
 
-str(df_venues_de_full)
+glimpse(df_venues_de_full)
 
 ```
 # 5. Visualizing the extracted data
@@ -319,7 +323,7 @@ glimpse(df_venues_at_small)
 
 df_venues_at = get_venues_of_country_ticketmaster(country_code = "AT", api_key)
 
-str(df_venues_at)
+glimpse(df_venues_at)
 ```
 
 Ploting as last task:
